@@ -8,6 +8,8 @@ struct MobileContentView: View {
     @State private var selectedVideoItem: PhotosPickerItem?
     @State private var isFileImporterPresented = false
     @State private var isImporting = false
+    @State private var showURLSheet = false
+    @State private var urlInput = ""
 
     var body: some View {
         ZStack {
@@ -28,16 +30,25 @@ struct MobileContentView: View {
             } else {
                 MobileEmptyState(
                     selectedVideoItem: $selectedVideoItem,
-                    openFilesAction: { isFileImporterPresented = true }
+                    openFilesAction: { isFileImporterPresented = true },
+                    openURLAction: {
+                        urlInput = ""
+                        showURLSheet = true
+                    }
                 )
             }
 
-            if isImporting {
+            if isImporting || store.isBuffering {
                 ProgressView()
                     .controlSize(.large)
                     .tint(.white)
                     .padding(18)
                     .background(.black.opacity(0.62), in: RoundedRectangle(cornerRadius: 8))
+            }
+        }
+        .sheet(isPresented: $showURLSheet) {
+            MobileURLInputSheet(urlInput: $urlInput) { input in
+                openURL(input)
             }
         }
         .task(id: selectedVideoItem) {
@@ -105,6 +116,19 @@ struct MobileContentView: View {
             store.alertMessage = error.localizedDescription
         }
     }
+
+    private func openURL(_ input: String) {
+        showURLSheet = false
+        let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return
+        }
+        guard let url = URL(string: trimmed) else {
+            store.alertMessage = "The URL \"\(trimmed)\" is not valid."
+            return
+        }
+        store.open(url)
+    }
 }
 
 private struct MobileHeader: View {
@@ -137,6 +161,7 @@ private struct MobileHeader: View {
 private struct MobileEmptyState: View {
     @Binding var selectedVideoItem: PhotosPickerItem?
     let openFilesAction: () -> Void
+    let openURLAction: () -> Void
 
     var body: some View {
         VStack(spacing: 18) {
@@ -149,7 +174,7 @@ private struct MobileEmptyState: View {
                     .font(.title2.weight(.semibold))
                     .foregroundStyle(.white)
 
-                Text("Equirectangular MP4, MOV, M4V, or compatible INSV")
+                Text("Equirectangular MP4, MOV, M4V, INSV, or a remote URL")
                     .font(.callout)
                     .multilineTextAlignment(.center)
                     .foregroundStyle(.white.opacity(0.68))
@@ -167,6 +192,12 @@ private struct MobileEmptyState: View {
                 .buttonStyle(.bordered)
                 .tint(.white)
             }
+
+            Button(action: openURLAction) {
+                Label("URL", systemImage: "globe")
+            }
+            .buttonStyle(.bordered)
+            .tint(.white)
         }
         .padding(26)
     }
@@ -231,5 +262,46 @@ private struct PickedMovie: Transferable {
             let copiedURL = try SharedVideoLoader.copyVideoToTemporaryLocation(received.file)
             return PickedMovie(url: copiedURL)
         }
+    }
+}
+
+private struct MobileURLInputSheet: View {
+    @Binding var urlInput: String
+    let onOpen: (String) -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 20) {
+                Text("Enter a remote 360 video URL")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+
+                TextField("https://example.com/video.mp4", text: $urlInput)
+                    .textFieldStyle(.roundedBorder)
+                    .keyboardType(.URL)
+                    .autocapitalization(.none)
+                    .disableAutocorrection(true)
+                    .padding(.horizontal)
+            }
+            .padding(.top, 28)
+            .navigationTitle("Open URL")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Open") {
+                        onOpen(urlInput)
+                        dismiss()
+                    }
+                    .disabled(urlInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+        }
+        .presentationDetents([.medium])
     }
 }

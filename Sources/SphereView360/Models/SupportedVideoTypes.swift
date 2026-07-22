@@ -46,7 +46,18 @@ enum SupportedVideoTypes {
         ]
     }
 
+    static func isHTTPVideoURL(_ url: URL) -> Bool {
+        guard let scheme = url.scheme?.lowercased() else {
+            return false
+        }
+        return scheme == "http" || scheme == "https"
+    }
+
     static func isLikelyVideo(_ url: URL) -> Bool {
+        if isHTTPVideoURL(url) {
+            return true
+        }
+
         let fileExtension = url.pathExtension.lowercased()
         guard !fileExtension.isEmpty else {
             return false

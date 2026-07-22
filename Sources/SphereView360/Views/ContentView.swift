@@ -5,6 +5,8 @@ import UniformTypeIdentifiers
 struct ContentView: View {
     @ObservedObject var store: ViewerStore
     @State private var isDropTargeted = false
+    @State private var showURLSheet = false
+    @State private var urlInput = ""
 
     var body: some View {
         ZStack {
@@ -37,6 +39,13 @@ struct ContentView: View {
                     .background(.black.opacity(0.18))
                     .padding(18)
             }
+
+            if store.isBuffering {
+                ProgressView()
+                    .scaleEffect(1.2)
+                    .frame(width: 64, height: 64)
+                    .background(.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 12))
+            }
         }
         .toolbar {
             ToolbarItemGroup {
@@ -58,6 +67,13 @@ struct ContentView: View {
                 } label: {
                     Label("Add to Open With", systemImage: "doc.badge.gearshape")
                 }
+
+                Button {
+                    urlInput = ""
+                    showURLSheet = true
+                } label: {
+                    Label("Open URL", systemImage: "globe")
+                }
             }
         }
         .onDrop(
@@ -65,6 +81,10 @@ struct ContentView: View {
             isTargeted: $isDropTargeted,
             perform: handleDrop(providers:)
         )
+        .onReceive(NotificationCenter.default.publisher(for: .sphereViewPromptURL)) { _ in
+            urlInput = ""
+            showURLSheet = true
+        }
         .alert(
             "SphereView360",
             isPresented: Binding(
@@ -82,6 +102,24 @@ struct ContentView: View {
         } message: {
             Text(store.alertMessage ?? "")
         }
+        .sheet(isPresented: $showURLSheet) {
+            URLInputSheet(urlInput: $urlInput) { input in
+                openURL(input)
+            }
+        }
+    }
+
+    private func openURL(_ input: String) {
+        showURLSheet = false
+        let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return
+        }
+        guard let url = URL(string: trimmed) else {
+            store.alertMessage = "The URL \"\(trimmed)\" is not valid."
+            return
+        }
+        store.open(url)
     }
 
     private func handleDrop(providers: [NSItemProvider]) -> Bool {
@@ -169,5 +207,41 @@ private struct EmptyStateView: View {
             }
         }
         .padding(28)
+    }
+}
+
+private struct URLInputSheet: View {
+    @Binding var urlInput: String
+    let onOpen: (String) -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(spacing: 20) {
+            Text("Open Remote Video")
+                .font(.headline)
+
+            TextField("https://example.com/video.mp4", text: $urlInput)
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 420)
+                .onSubmit {
+                    onOpen(urlInput)
+                    dismiss()
+                }
+
+            HStack(spacing: 12) {
+                Button("Cancel", role: .cancel) {
+                    dismiss()
+                }
+
+                Button("Open") {
+                    onOpen(urlInput)
+                    dismiss()
+                }
+                .keyboardShortcut(.return)
+                .disabled(urlInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+        }
+        .padding(28)
+        .frame(width: 480)
     }
 }

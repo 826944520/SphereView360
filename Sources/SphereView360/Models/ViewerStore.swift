@@ -17,10 +17,12 @@ final class ViewerStore: ObservableObject {
     }
     @Published var alertMessage: String?
     @Published private(set) var viewResetID = UUID()
+    @Published private(set) var isBuffering = false
 
     private var timeObserver: Any?
     private var endObserver: NSObjectProtocol?
     private var failedObserver: NSObjectProtocol?
+    private var statusObserver: NSKeyValueObservation?
 
     var hasVideo: Bool {
         player != nil
@@ -48,13 +50,19 @@ final class ViewerStore: ObservableObject {
         newPlayer.volume = Float(volume)
 
         currentURL = url
-        displayName = url.lastPathComponent
+        displayName = SupportedVideoTypes.isHTTPVideoURL(url)
+            ? url.lastPathComponent.isEmpty ? url.absoluteString : url.lastPathComponent
+            : url.lastPathComponent
         player = newPlayer
         currentTime = 0
         duration = 0
+        isBuffering = SupportedVideoTypes.isHTTPVideoURL(url)
         installObservers(for: newPlayer, item: item)
         requestViewReset()
-        play()
+
+        if !isBuffering {
+            play()
+        }
     }
 
     func togglePlayback() {
@@ -93,6 +101,12 @@ final class ViewerStore: ObservableObject {
     }
 
     private func installObservers(for player: AVPlayer, item: AVPlayerItem) {
+        statusObserver = item.observe(\.status, options: [.new]) { [weak self] observedItem, _ in
+            Task { @MainActor in
+                self?.handleItemStatus(observedItem.status, error: observedItem.error)
+            }
+        }
+
         timeObserver = player.addPeriodicTimeObserver(
             forInterval: CMTime(seconds: 0.1, preferredTimescale: 600),
             queue: .main
@@ -139,6 +153,28 @@ final class ViewerStore: ObservableObject {
         }
     }
 
+    private func handleItemStatus(_ status: AVPlayerItem.Status, error: Error?) {
+        switch status {
+        case .readyToPlay:
+            guard isBuffering else {
+                return
+            }
+            isBuffering = false
+            play()
+
+        case .failed:
+            isBuffering = false
+            let message = error?.localizedDescription ?? "The video could not be loaded."
+            alertMessage = message
+
+        case .unknown:
+            break
+
+        @unknown default:
+            break
+        }
+    }
+
     private func handlePlaybackEnded() {
         guard isLooping else {
             isPlaying = false
@@ -165,9 +201,13 @@ final class ViewerStore: ObservableObject {
         }
         failedObserver = nil
 
+        statusObserver?.invalidate()
+        statusObserver = nil
+
         player?.pause()
         player = nil
         isPlaying = false
+        isBuffering = false
     }
 }
 

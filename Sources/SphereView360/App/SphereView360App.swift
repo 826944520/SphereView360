@@ -23,6 +23,11 @@ struct SphereView360App: App {
                 }
                 .keyboardShortcut("o")
 
+                Button("Open URL...") {
+                    NotificationCenter.default.post(name: .sphereViewPromptURL, object: nil)
+                }
+                .keyboardShortcut("o", modifiers: [.command, .shift])
+
                 Button("Add to Open With") {
                     store.registerOpenWithOption()
                 }

@@ -127,15 +127,21 @@ final class ViewerStore: ObservableObject {
         os_log(.info, log: log, "[obs] installing observers...")
 
         statusObserver = item.observe(\.status, options: [.new, .initial]) { [weak self] observedItem, _ in
-            self?.onItemStatusChange(observedItem)
+            Task { @MainActor in
+                self?.onItemStatusChange(observedItem)
+            }
         }
 
         timeControlObserver = player.observe(\.timeControlStatus, options: [.new]) { [weak self] p, _ in
-            self?.onTimeControlChange(p)
+            Task { @MainActor in
+                self?.onTimeControlChange(p)
+            }
         }
 
         durationObserver = item.observe(\.duration, options: [.new]) { [weak self] observedItem, _ in
-            self?.onDurationChange(observedItem)
+            Task { @MainActor in
+                self?.onDurationChange(observedItem)
+            }
         }
 
         timeObserver = player.addPeriodicTimeObserver(
@@ -215,9 +221,9 @@ final class ViewerStore: ObservableObject {
     private func onTimeControlChange(_ player: AVPlayer) {
         let reason = player.reasonForWaitingToPlay
         os_log(.info, log: log, "[obs] timeControlStatus -> %ld, waitReason: %{public}@",
-               player.timeControlStatus.rawValue, reason ?? "nil")
+               player.timeControlStatus.rawValue, reason?.rawValue ?? "nil")
         if player.timeControlStatus == .waitingToPlayAtSpecifiedRate, let r = reason {
-            os_log(.error, log: log, "[obs] WAITING: %{public}@", r)
+            os_log(.error, log: log, "[obs] WAITING: %{public}@", r.rawValue)
         }
     }
 

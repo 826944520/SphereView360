@@ -19,6 +19,9 @@ struct ContentView: View {
             } else {
                 EmptyStateView {
                     store.presentOpenPanel()
+                } openURL: {
+                    urlInput = ""
+                    showURLSheet = true
                 } makeDefaultAction: {
                     store.registerOpenWithOption()
                 }
@@ -172,6 +175,7 @@ private struct HeaderOverlay: View {
 
 private struct EmptyStateView: View {
     let openAction: () -> Void
+    let openURL: () -> Void
     let makeDefaultAction: () -> Void
 
     var body: some View {
@@ -185,7 +189,7 @@ private struct EmptyStateView: View {
                     .font(.title2.weight(.semibold))
                     .foregroundStyle(.white)
 
-                Text("Equirectangular MP4, MOV, M4V, and compatible INSV files")
+                Text("Equirectangular MP4, MOV, M4V, INSV, or a remote HTTP URL")
                     .font(.callout)
                     .foregroundStyle(.white.opacity(0.68))
             }
@@ -199,12 +203,19 @@ private struct EmptyStateView: View {
                 .buttonStyle(.borderedProminent)
 
                 Button {
-                    makeDefaultAction()
+                    openURL()
                 } label: {
-                    Label("Add to Open With", systemImage: "doc.badge.gearshape")
+                    Label("Open URL", systemImage: "globe")
                 }
                 .buttonStyle(.bordered)
             }
+
+            Button {
+                makeDefaultAction()
+            } label: {
+                Label("Add to Open With", systemImage: "doc.badge.gearshape")
+            }
+            .buttonStyle(.bordered)
         }
         .padding(28)
     }

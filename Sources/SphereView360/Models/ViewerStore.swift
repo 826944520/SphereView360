@@ -127,20 +127,36 @@ final class ViewerStore: ObservableObject {
         os_log(.info, log: log, "[obs] installing observers...")
 
         statusObserver = item.observe(\.status, options: [.new, .initial]) { [weak self] observedItem, _ in
+            // Copy Sendable values out of the non-Sendable AVPlayerItem before
+            // crossing into the @MainActor Task, to avoid a data race.
+            let status = observedItem.status
+            let error = observedItem.error
+            os_log(.info, log: log, "[obs] item.status -> %ld, error: %{public}@",
+                   status.rawValue, error?.localizedDescription ?? "nil")
             Task { @MainActor in
-                self?.onItemStatusChange(observedItem)
+                self?.handleItemStatus(status, error: error)
             }
         }
 
-        timeControlObserver = player.observe(\.timeControlStatus, options: [.new]) { [weak self] p, _ in
-            Task { @MainActor in
-                self?.onTimeControlChange(p)
+        timeControlObserver = player.observe(\.timeControlStatus, options: [.new]) { p, _ in
+            let status = p.timeControlStatus
+            let reason = p.reasonForWaitingToPlay
+            os_log(.info, log: log, "[obs] timeControlStatus -> %ld, waitReason: %{public}@",
+                   status.rawValue, reason?.rawValue ?? "nil")
+            if status == .waitingToPlayAtSpecifiedRate, let r = reason {
+                os_log(.error, log: log, "[obs] WAITING: %{public}@", r.rawValue)
             }
         }
 
         durationObserver = item.observe(\.duration, options: [.new]) { [weak self] observedItem, _ in
+            let d = observedItem.duration
+            os_log(.info, log: log, "[obs] item.duration -> %.2fs (flags=%d, timescale=%d)",
+                   d.seconds, d.flags.rawValue, d.timescale)
             Task { @MainActor in
-                self?.onDurationChange(observedItem)
+                let seconds = d.seconds
+                if seconds.isFinite, seconds > 0 {
+                    self?.duration = seconds
+                }
             }
         }
 
@@ -186,9 +202,11 @@ final class ViewerStore: ObservableObject {
             queue: .main
         ) { [weak self] notification in
             os_log(.error, log: log, "[obs] NEW ERROR LOG ENTRY")
-            if let item = notification.object as? AVPlayerItem,
-               let logData = item.errorLog() {
-                let events = logData.events
+            // Copy what we need out of the non-Sendable Notification before
+            // crossing into the @MainActor Task, to avoid a data race.
+            let errorItem = notification.object as? AVPlayerItem
+            let logData = errorItem?.errorLog()
+            if let events = logData?.events {
                 for event in events {
                     os_log(.error, log: log, "[obs]   error: %{public}@, code=%ld, uri=%{public}@",
                            event.errorComment ?? "(no comment)",
@@ -196,47 +214,13 @@ final class ViewerStore: ObservableObject {
                            event.uri ?? "(no uri)")
                 }
             }
+            let errorMessage = logData?.events.first?.errorComment
             Task { @MainActor in
-                if let item = notification.object as? AVPlayerItem,
-                   let events = item.errorLog()?.events.first {
-                    let msg = events.errorComment ?? "Playback error"
-                    self?.alertMessage = msg
-                }
+                self?.alertMessage = errorMessage ?? "Playback error"
             }
         }
 
         os_log(.info, log: log, "[obs] all observers installed")
-    }
-
-    private func onItemStatusChange(_ item: AVPlayerItem) {
-        let newStatus = item.status
-        let error = item.error
-        os_log(.info, log: log, "[obs] item.status -> %ld, error: %{public}@",
-               newStatus.rawValue, error?.localizedDescription ?? "nil")
-        Task { @MainActor in
-            handleItemStatus(newStatus, error: error)
-        }
-    }
-
-    private func onTimeControlChange(_ player: AVPlayer) {
-        let reason = player.reasonForWaitingToPlay
-        os_log(.info, log: log, "[obs] timeControlStatus -> %ld, waitReason: %{public}@",
-               player.timeControlStatus.rawValue, reason?.rawValue ?? "nil")
-        if player.timeControlStatus == .waitingToPlayAtSpecifiedRate, let r = reason {
-            os_log(.error, log: log, "[obs] WAITING: %{public}@", r.rawValue)
-        }
-    }
-
-    private func onDurationChange(_ item: AVPlayerItem) {
-        let d = item.duration
-        os_log(.info, log: log, "[obs] item.duration -> %.2fs (flags=%d, timescale=%d)",
-               d.seconds, d.flags.rawValue, d.timescale)
-        Task { @MainActor in
-            let seconds = d.seconds
-            if seconds.isFinite, seconds > 0 {
-                duration = seconds
-            }
-        }
     }
 
     private func updatePlaybackTime(_ time: CMTime) {

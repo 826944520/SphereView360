@@ -196,12 +196,13 @@ final class ViewerStore: ObservableObject {
                            event.uri ?? "(no uri)")
                 }
             }
+            // 在进入 @MainActor Task 之前先把 notification 里的数据拷出来，
+            // 避免跨隔离域捕获非 Sendable 的 Notification 值。
+            let capturedItem = notification.object as? AVPlayerItem
+            let capturedMessage = capturedItem?.errorLog()?.events.first?.errorComment
             Task { @MainActor in
-                if let item = notification.object as? AVPlayerItem,
-                   let events = item.errorLog()?.events.first {
-                    let msg = events.errorComment ?? "Playback error"
-                    self?.alertMessage = msg
-                }
+                let msg = capturedMessage ?? "Playback error"
+                self?.alertMessage = msg
             }
         }
 

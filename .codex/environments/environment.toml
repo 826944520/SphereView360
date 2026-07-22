@@ -11,11 +11,6 @@ icon = "run"
 command = "./script/build_and_run.sh"
 
 [[actions]]
-name = "Install Integrations"
-icon = "settings"
-command = "./script/build_and_run.sh --install-integrations"
-
-[[actions]]
 name = "Build iOS"
 icon = "phone"
 command = "./script/build_and_run.sh --build-ios-simulator"

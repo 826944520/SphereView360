@@ -1,48 +1,10 @@
 import AVFoundation
 import SceneKit
 import SwiftUI
-
-#if os(macOS)
-import AppKit
-private typealias PlatformColor = NSColor
-#elseif os(iOS)
 import UIKit
+
 private typealias PlatformColor = UIColor
-#endif
 
-#if os(macOS)
-struct SceneKit360VideoView: NSViewRepresentable {
-    let player: AVPlayer?
-    let resetID: UUID
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator(resetID: resetID)
-    }
-
-    func makeNSView(context: Context) -> SphereSceneView {
-        let view = SphereSceneView(frame: .zero)
-        view.setPlayer(player)
-        return view
-    }
-
-    func updateNSView(_ nsView: SphereSceneView, context: Context) {
-        nsView.setPlayer(player)
-
-        if context.coordinator.resetID != resetID {
-            context.coordinator.resetID = resetID
-            nsView.resetCamera(animated: true)
-        }
-    }
-
-    final class Coordinator {
-        var resetID: UUID
-
-        init(resetID: UUID) {
-            self.resetID = resetID
-        }
-    }
-}
-#elseif os(iOS)
 struct SceneKit360VideoView: UIViewRepresentable {
     let player: AVPlayer?
     let resetID: UUID
@@ -74,14 +36,11 @@ struct SceneKit360VideoView: UIViewRepresentable {
         }
     }
 }
-#endif
 
 final class SphereSceneView: SCNView {
     private enum CameraControl {
         static let mouseDragRadiansPerPoint: CGFloat = 0.006
         static let preciseScrollRadiansPerPoint: CGFloat = 0.0045
-        static let wheelScrollRadiansPerPoint: CGFloat = 0.06
-        static let keyStepRadians: CGFloat = 0.08
         static let magnifyFieldOfViewScale: CGFloat = 28
         static let minimumPitch: CGFloat = -.pi / 2 + 0.04
         static let maximumPitch: CGFloat = .pi / 2 - 0.04
@@ -97,10 +56,6 @@ final class SphereSceneView: SCNView {
     private var pitch: CGFloat = 0
     private var fieldOfView: CGFloat = CameraControl.defaultFieldOfView
 
-    #if os(macOS)
-    private var lastDragLocation: NSPoint?
-    #endif
-
     override init(frame: CGRect, options: [String: Any]? = nil) {
         super.init(frame: frame, options: options)
         configureScene()
@@ -110,12 +65,6 @@ final class SphereSceneView: SCNView {
         super.init(coder: coder)
         configureScene()
     }
-
-    #if os(macOS)
-    override var acceptsFirstResponder: Bool {
-        true
-    }
-    #endif
 
     func setPlayer(_ player: AVPlayer?) {
         guard currentPlayer !== player else {
@@ -148,10 +97,6 @@ final class SphereSceneView: SCNView {
     }
 
     private func configureScene() {
-        #if os(macOS)
-        wantsLayer = true
-        #endif
-
         backgroundColor = .black
         antialiasingMode = .multisampling4X
         preferredFramesPerSecond = 60
@@ -192,7 +137,6 @@ final class SphereSceneView: SCNView {
     }
 
     private func configurePlatformInput() {
-        #if os(iOS)
         isUserInteractionEnabled = true
 
         let oneFingerPan = UIPanGestureRecognizer(target: self, action: #selector(handleOneFingerPan(_:)))
@@ -210,7 +154,6 @@ final class SphereSceneView: SCNView {
         let pinch = UIPinchGestureRecognizer(target: self, action: #selector(handlePinch(_:)))
         pinch.delegate = self
         addGestureRecognizer(pinch)
-        #endif
     }
 
     private func applyCamera() {
@@ -234,80 +177,6 @@ final class SphereSceneView: SCNView {
         applyCamera()
     }
 
-    #if os(macOS)
-    override func mouseDown(with event: NSEvent) {
-        window?.makeFirstResponder(self)
-        lastDragLocation = event.locationInWindow
-        NSCursor.closedHand.set()
-    }
-
-    override func mouseDragged(with event: NSEvent) {
-        let location = event.locationInWindow
-        guard let lastDragLocation else {
-            self.lastDragLocation = location
-            return
-        }
-
-        let deltaX = location.x - lastDragLocation.x
-        let deltaY = location.y - lastDragLocation.y
-        self.lastDragLocation = location
-        rotateCamera(
-            deltaX: deltaX,
-            deltaY: deltaY,
-            sensitivity: CameraControl.mouseDragRadiansPerPoint
-        )
-    }
-
-    override func mouseUp(with event: NSEvent) {
-        lastDragLocation = nil
-        NSCursor.openHand.set()
-    }
-
-    override func scrollWheel(with event: NSEvent) {
-        window?.makeFirstResponder(self)
-
-        let sensitivity = event.hasPreciseScrollingDeltas
-            ? CameraControl.preciseScrollRadiansPerPoint
-            : CameraControl.wheelScrollRadiansPerPoint
-
-        rotateCamera(
-            deltaX: event.scrollingDeltaX,
-            deltaY: event.scrollingDeltaY,
-            sensitivity: sensitivity
-        )
-    }
-
-    override func magnify(with event: NSEvent) {
-        window?.makeFirstResponder(self)
-        zoomCamera(delta: event.magnification * CameraControl.magnifyFieldOfViewScale)
-    }
-
-    override func keyDown(with event: NSEvent) {
-        switch event.keyCode {
-        case 123:
-            yaw -= CameraControl.keyStepRadians
-        case 124:
-            yaw += CameraControl.keyStepRadians
-        case 125:
-            pitch -= CameraControl.keyStepRadians
-        case 126:
-            pitch += CameraControl.keyStepRadians
-        case 15:
-            resetCamera(animated: true)
-            return
-        default:
-            super.keyDown(with: event)
-            return
-        }
-
-        pitch = min(max(pitch, CameraControl.minimumPitch), CameraControl.maximumPitch)
-        applyCamera()
-    }
-
-    override func resetCursorRects() {
-        addCursorRect(bounds, cursor: .openHand)
-    }
-    #elseif os(iOS)
     @objc private func handleOneFingerPan(_ recognizer: UIPanGestureRecognizer) {
         let translation = recognizer.translation(in: self)
         rotateCamera(
@@ -333,10 +202,8 @@ final class SphereSceneView: SCNView {
         zoomCamera(delta: scaleDelta * CameraControl.magnifyFieldOfViewScale)
         recognizer.scale = 1
     }
-    #endif
 }
 
-#if os(iOS)
 extension SphereSceneView: UIGestureRecognizerDelegate {
     func gestureRecognizer(
         _ gestureRecognizer: UIGestureRecognizer,
@@ -345,4 +212,3 @@ extension SphereSceneView: UIGestureRecognizerDelegate {
         true
     }
 }
-#endif

@@ -355,23 +355,3 @@ final class ViewerStore: ObservableObject {
         os_log(.info, log: log, "[teardown] done")
     }
 }
-
-#if os(macOS)
-extension ViewerStore {
-    func presentOpenPanel() {
-        guard let url = VideoOpenPanel.chooseVideo() else {
-            return
-        }
-        open(url)
-    }
-
-    func registerOpenWithOption() {
-        do {
-            try OpenWithRegistrationService.registerCurrentAppBundle()
-            alertMessage = "SphereView360 was registered as an Open With option. It was not made the default app for MP4, MOV, or M4V files."
-        } catch {
-            alertMessage = error.localizedDescription
-        }
-    }
-}
-#endif
